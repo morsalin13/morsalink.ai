@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "My Chat AI",
+  title: "Morsalink AI",
   description: "Gemini powered chat app",
 };
 
