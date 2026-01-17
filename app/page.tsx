@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-// 🔹 Typing animation helper
+// 🔹 Typing animation helper (GUARANTEED)
 function typeText(
   fullText: string,
   onUpdate: (text: string) => void,
@@ -17,7 +17,7 @@ function typeText(
     onUpdate(fullText.slice(0, i));
     if (i >= fullText.length) {
       clearInterval(interval);
-      onDone(); // ✅ typing শেষ
+      onDone();
     }
   }, speed);
 }
@@ -43,6 +43,7 @@ export default function Home() {
 
     const userMsg: Msg = { role: "user", content: input.trim() };
 
+    // show user msg instantly
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setLoading(true);
@@ -58,24 +59,31 @@ export default function Home() {
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Image generation failed");
+
         setImgUrl(data.url);
         setLoading(false);
-      } else {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [...messages, userMsg] }),
-        });
+        return;
+      }
 
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Chat failed");
+      // ---- CHAT MODE ----
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [...messages, userMsg] }),
+      });
 
-        // 🔹 empty assistant bubble
-        setMessages((m) => [...m, { role: "assistant", content: "" }]);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Chat failed");
 
-        // 🔹 typing animation (FIXED)
+      const answerText = String(data.text || "");
+
+      // 1️⃣ add empty assistant bubble
+      setMessages((m) => [...m, { role: "assistant", content: "" }]);
+
+      // 2️⃣ wait one render frame (IMPORTANT)
+      setTimeout(() => {
         typeText(
-          data.text,
+          answerText,
           (typed) => {
             setMessages((m) => {
               const copy = [...m];
@@ -87,11 +95,11 @@ export default function Home() {
             });
           },
           () => {
-            setLoading(false); // ✅ typing শেষ হলে loading off
+            setLoading(false); // typing শেষ হলে loading off
           },
           25
         );
-      }
+      }, 0);
     } catch (e: any) {
       setMessages((m) => [
         ...m,
@@ -136,7 +144,9 @@ export default function Home() {
             />
           )}
 
-          {loading && <div className="text-sm text-zinc-400">AI is typing…</div>}
+          {loading && (
+            <div className="text-sm text-zinc-400">AI is typing…</div>
+          )}
 
           <div ref={bottomRef} />
         </div>
