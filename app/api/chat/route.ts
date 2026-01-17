@@ -1,21 +1,37 @@
 // app/api/chat/route.ts
 
-// 🔹 CUSTOM IDENTITY (highest priority)
+// 🧠 SYSTEM PROMPT (THIS IS THE SOUL)
+const SYSTEM_PROMPT = `
+You are Morsalink AI, a friendly and intelligent conversational assistant created by Morsalin.
+
+Your behavior:
+- Talk naturally like ChatGPT
+- Be friendly, helpful, and human-like
+- Explain things simply
+- Use short paragraphs
+- Sometimes ask a follow-up question
+- Never say "according to Wikipedia"
+- Never sound robotic or encyclopedic
+- If you don't know something, say it honestly
+
+Identity rules:
+- If asked "who are you", reply:
+  "I am Morsalink AI, created by Morsalin."
+
+Language:
+- Reply in the same language the user uses.
+`;
+
+// 🔹 Custom identity (hard rule)
 function customIdentityAnswer(question: string): string | null {
-  const q = question.toLowerCase().trim();
-
-  if (
-    q === "who are you" ||
-    q === "who are you?" ||
-    q.includes("who are you")
-  ) {
-    return "I am Morsalink AI made by Morsalin.";
+  const q = question.toLowerCase();
+  if (q.includes("who are you")) {
+    return "I am Morsalink AI, created by Morsalin.";
   }
-
   return null;
 }
 
-// 🔹 Gemini AI
+// 🔹 Gemini (chat-style)
 async function geminiAnswer(prompt: string): Promise<string> {
   const res = await fetch(
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
@@ -24,7 +40,12 @@ async function geminiAnswer(prompt: string): Promise<string> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: SYSTEM_PROMPT + "\n\nUser: " + prompt }],
+          },
+        ],
       }),
     }
   );
@@ -34,11 +55,11 @@ async function geminiAnswer(prompt: string): Promise<string> {
   const data = await res.json();
   return (
     data.candidates?.[0]?.content?.parts?.[0]?.text ||
-    "I couldn't generate a response."
+    "I'm not sure about that yet."
   );
 }
 
-// 🔹 Wikipedia fallback (no API key)
+// 🔹 Wikipedia (fact source only)
 async function wikipediaAnswer(query: string): Promise<string> {
   const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
     query
@@ -58,10 +79,9 @@ async function wikipediaAnswer(query: string): Promise<string> {
   return summaryData?.extract || "";
 }
 
-// 🔥 STREAM helper (ChatGPT-style)
+// 🔥 Streaming helper (ChatGPT typing)
 function streamText(text: string) {
   const encoder = new TextEncoder();
-
   return new ReadableStream({
     start(controller) {
       let i = 0;
@@ -73,7 +93,7 @@ function streamText(text: string) {
           clearInterval(interval);
           controller.close();
         }
-      }, 10); // typing speed (fast & smooth)
+      }, 10);
     },
   });
 }
@@ -83,33 +103,33 @@ export async function POST(req: Request) {
   const question = messages[messages.length - 1]?.content;
 
   if (!question) {
-    return new Response("Please ask a question.", { status: 400 });
+    return new Response("Please ask something.", { status: 400 });
   }
 
-  // 0️⃣ CUSTOM IDENTITY (highest priority)
+  // 0️⃣ Identity rule
   const identity = customIdentityAnswer(question);
   if (identity) {
     return new Response(streamText(identity), {
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-cache",
-      },
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   }
 
-  let fullAnswer = "";
+  let answer = "";
 
-  // 1️⃣ Gemini
+  // 1️⃣ Try Gemini (chat brain)
   try {
-    fullAnswer = await geminiAnswer(question);
+    answer = await geminiAnswer(question);
   } catch {
-    // 2️⃣ Wikipedia fallback
-    fullAnswer =
-      (await wikipediaAnswer(question)) ||
-      "I couldn't find a clear answer.";
+    // 2️⃣ Wikipedia → rewritten as AI speech
+    const wiki = await wikipediaAnswer(question);
+    if (wiki) {
+      answer = `Here’s what I know about that:\n\n${wiki}\n\nIf you want, I can explain this more simply or go deeper.`;
+    } else {
+      answer = "Hmm, I couldn’t find a clear answer. Can you rephrase the question?";
+    }
   }
 
-  return new Response(streamText(fullAnswer), {
+  return new Response(streamText(answer), {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-cache",
