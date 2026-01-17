@@ -34,8 +34,32 @@ async function duckDuckGoAnswer(query: string): Promise<string> {
     data.AbstractText ||
     data.Answer ||
     data.RelatedTopics?.[0]?.Text ||
-    "I searched the web but couldn't find a clear answer."
+    ""
   );
+}
+
+// 🔹 Wikipedia helpers (NO API KEY)
+async function wikipediaAnswer(query: string): Promise<string> {
+  // 1) search title
+  const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+    query
+  )}&format=json&origin=*`;
+
+  const searchRes = await fetch(searchUrl);
+  const searchData = await searchRes.json();
+  const title = searchData?.query?.search?.[0]?.title;
+
+  if (!title) return "";
+
+  // 2) fetch summary
+  const summaryRes = await fetch(
+    `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
+      title
+    )}`
+  );
+  const summaryData = await summaryRes.json();
+
+  return summaryData?.extract || "";
 }
 
 export async function POST(req: Request) {
@@ -48,21 +72,28 @@ export async function POST(req: Request) {
 
   let fullAnswer = "";
 
-  // 1️⃣ Gemini → try first
+  // 1️⃣ Gemini
   try {
     fullAnswer = await geminiAnswer(question);
   } catch {
-    // 2️⃣ Gemini fail → DuckDuckGo fallback
-    fullAnswer = await duckDuckGoAnswer(question);
+    // 2️⃣ DuckDuckGo
+    try {
+      fullAnswer = await duckDuckGoAnswer(question);
+      if (!fullAnswer) throw new Error("DDG empty");
+    } catch {
+      // 3️⃣ Wikipedia
+      fullAnswer =
+        (await wikipediaAnswer(question)) ||
+        "I couldn't find a clear answer.";
+    }
   }
 
-  // 🔥 STREAM the answer (ChatGPT style)
+  // 🔥 STREAM response (ChatGPT style)
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
     start(controller) {
       let i = 0;
-
       const interval = setInterval(() => {
         if (i < fullAnswer.length) {
           controller.enqueue(encoder.encode(fullAnswer[i]));
@@ -71,7 +102,7 @@ export async function POST(req: Request) {
           clearInterval(interval);
           controller.close();
         }
-      }, 25); // typing speed (ms)
+      }, 25); // typing speed
     },
   });
 
