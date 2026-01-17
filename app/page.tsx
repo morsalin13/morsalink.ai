@@ -4,24 +4,6 @@ import { useEffect, useRef, useState } from "react";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-// 🔹 Typing animation helper (GUARANTEED)
-function typeText(
-  fullText: string,
-  onUpdate: (text: string) => void,
-  onDone: () => void,
-  speed = 25
-) {
-  let i = 0;
-  const interval = setInterval(() => {
-    i++;
-    onUpdate(fullText.slice(0, i));
-    if (i >= fullText.length) {
-      clearInterval(interval);
-      onDone();
-    }
-  }, speed);
-}
-
 export default function Home() {
   const [messages, setMessages] = useState<Msg[]>([
     { role: "assistant", content: "Hi! I'm Morsalink AI. How can I help you today?" },
@@ -36,7 +18,7 @@ export default function Home() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, imgUrl, loading]);
+  }, [messages, loading]);
 
   async function send() {
     if (!input.trim() || loading) return;
@@ -44,7 +26,7 @@ export default function Home() {
     const userMsg: Msg = { role: "user", content: input.trim() };
 
     // show user msg instantly
-    setMessages((m) => [...m, userMsg]);
+    setMessages((m) => [...m, userMsg, { role: "assistant", content: "" }]);
     setInput("");
     setLoading(true);
     setImgUrl(null);
@@ -65,41 +47,35 @@ export default function Home() {
         return;
       }
 
-      // ---- CHAT MODE ----
+      // 🔥 STREAMING CHAT
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: [...messages, userMsg] }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Chat failed");
+      if (!res.body) throw new Error("No stream");
 
-      const answerText = String(data.text || "");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
 
-      // 1️⃣ add empty assistant bubble
-      setMessages((m) => [...m, { role: "assistant", content: "" }]);
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
 
-      // 2️⃣ wait one render frame (IMPORTANT)
-      setTimeout(() => {
-        typeText(
-          answerText,
-          (typed) => {
-            setMessages((m) => {
-              const copy = [...m];
-              copy[copy.length - 1] = {
-                role: "assistant",
-                content: typed,
-              };
-              return copy;
-            });
-          },
-          () => {
-            setLoading(false); // typing শেষ হলে loading off
-          },
-          25
-        );
-      }, 0);
+        const chunk = decoder.decode(value);
+
+        setMessages((m) => {
+          const copy = [...m];
+          copy[copy.length - 1] = {
+            role: "assistant",
+            content: copy[copy.length - 1].content + chunk,
+          };
+          return copy;
+        });
+      }
+
+      setLoading(false);
     } catch (e: any) {
       setMessages((m) => [
         ...m,
@@ -132,6 +108,9 @@ export default function Home() {
                 }`}
               >
                 {m.content}
+                {loading && i === messages.length - 1 && (
+                  <span className="animate-pulse">▌</span>
+                )}
               </div>
             </div>
           ))}
@@ -144,9 +123,7 @@ export default function Home() {
             />
           )}
 
-          {loading && (
-            <div className="text-sm text-zinc-400">AI is typing…</div>
-          )}
+          {loading && <div className="text-sm text-zinc-400">AI is typing…</div>}
 
           <div ref={bottomRef} />
         </div>
@@ -167,9 +144,7 @@ export default function Home() {
               className="w-full bg-zinc-900 border border-zinc-800 rounded-full px-5 py-3 pr-14 text-sm outline-none focus:ring-2 focus:ring-blue-500"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") send();
-              }}
+              onKeyDown={(e) => e.key === "Enter" && send()}
               placeholder={imageMode ? "Describe image…" : "Message Morsalink AI"}
             />
 

@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
+// app/api/chat/route.ts
 
-async function geminiAnswer(prompt: string) {
+async function geminiAnswer(prompt: string): Promise<string> {
   const res = await fetch(
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
       process.env.GEMINI_API_KEY,
@@ -16,10 +16,13 @@ async function geminiAnswer(prompt: string) {
   if (!res.ok) throw new Error("Gemini failed");
 
   const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text;
+  return (
+    data.candidates?.[0]?.content?.parts?.[0]?.text ||
+    "I couldn't generate a response."
+  );
 }
 
-async function duckDuckGoAnswer(query: string) {
+async function duckDuckGoAnswer(query: string): Promise<string> {
   const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(
     query
   )}&format=json&no_redirect=1&no_html=1`;
@@ -40,20 +43,42 @@ export async function POST(req: Request) {
   const question = messages[messages.length - 1]?.content;
 
   if (!question) {
-    return NextResponse.json({ text: "Please ask a question." });
+    return new Response("Please ask a question.", { status: 400 });
   }
 
-  // 1️⃣ Try Gemini first
+  let fullAnswer = "";
+
+  // 1️⃣ Gemini → try first
   try {
-    const geminiText = await geminiAnswer(question);
-    if (geminiText) {
-      return NextResponse.json({ text: geminiText });
-    }
-  } catch (err) {
-    // ❌ Gemini failed → silently fallback
+    fullAnswer = await geminiAnswer(question);
+  } catch {
+    // 2️⃣ Gemini fail → DuckDuckGo fallback
+    fullAnswer = await duckDuckGoAnswer(question);
   }
 
-  // 2️⃣ Fallback to DuckDuckGo (NO ERROR TO USER)
-  const ddgText = await duckDuckGoAnswer(question);
-  return NextResponse.json({ text: ddgText });
+  // 🔥 STREAM the answer (ChatGPT style)
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    start(controller) {
+      let i = 0;
+
+      const interval = setInterval(() => {
+        if (i < fullAnswer.length) {
+          controller.enqueue(encoder.encode(fullAnswer[i]));
+          i++;
+        } else {
+          clearInterval(interval);
+          controller.close();
+        }
+      }, 25); // typing speed (ms)
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-cache",
+    },
+  });
 }
