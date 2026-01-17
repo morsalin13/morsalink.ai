@@ -25,7 +25,7 @@ export default function Home() {
 
     const userMsg: Msg = { role: "user", content: input.trim() };
 
-    // show user msg instantly
+    // show user msg instantly + empty assistant bubble
     setMessages((m) => [...m, userMsg, { role: "assistant", content: "" }]);
     setInput("");
     setLoading(true);
@@ -38,16 +38,14 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt: userMsg.content }),
         });
-
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Image generation failed");
-
         setImgUrl(data.url);
         setLoading(false);
         return;
       }
 
-      // 🔥 STREAMING CHAT
+      // 🔥 STREAMING CHAT (no cursor)
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -64,7 +62,6 @@ export default function Home() {
         if (done) break;
 
         const chunk = decoder.decode(value);
-
         setMessages((m) => {
           const copy = [...m];
           copy[copy.length - 1] = {
@@ -108,9 +105,6 @@ export default function Home() {
                 }`}
               >
                 {m.content}
-                {loading && i === messages.length - 1 && (
-                  <span className="animate-pulse">▌</span>
-                )}
               </div>
             </div>
           ))}
@@ -147,7 +141,6 @@ export default function Home() {
               onKeyDown={(e) => e.key === "Enter" && send()}
               placeholder={imageMode ? "Describe image…" : "Message Morsalink AI"}
             />
-
             <button
               onClick={send}
               className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white text-black font-bold hover:bg-zinc-200 transition"
