@@ -4,15 +4,27 @@ import { useEffect, useRef, useState } from "react";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
+// 🔹 helper: copy
+function copyText(text: string) {
+  navigator.clipboard.writeText(text);
+}
+
+// 🔹 helper: share
+function shareText(text: string) {
+  if (navigator.share) {
+    navigator.share({ text });
+  } else {
+    navigator.clipboard.writeText(text);
+    alert("Text copied for sharing");
+  }
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Msg[]>([
     { role: "assistant", content: "Hi! I'm Morsalink AI. How can I help you today?" },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const [imageMode, setImageMode] = useState(false);
-  const [imgUrl, setImgUrl] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -25,34 +37,19 @@ export default function Home() {
 
     const userMsg: Msg = { role: "user", content: input.trim() };
 
-    // show user msg instantly + empty assistant bubble
+    // show user + empty assistant bubble
     setMessages((m) => [...m, userMsg, { role: "assistant", content: "" }]);
     setInput("");
     setLoading(true);
-    setImgUrl(null);
 
     try {
-      if (imageMode) {
-        const res = await fetch("/api/image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: userMsg.content }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Image generation failed");
-        setImgUrl(data.url);
-        setLoading(false);
-        return;
-      }
-
-      // 🔥 STREAMING CHAT (no cursor)
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: [...messages, userMsg] }),
       });
 
-      if (!res.body) throw new Error("No stream");
+      if (!res.body) throw new Error("No response stream");
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -76,7 +73,7 @@ export default function Home() {
     } catch (e: any) {
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: "⚠️ " + (e?.message || "Something went wrong") },
+        { role: "assistant", content: "⚠️ Something went wrong." },
       ]);
       setLoading(false);
     }
@@ -106,16 +103,45 @@ export default function Home() {
               >
                 {m.content}
               </div>
+
+              {/* 🔘 ACTION BUTTONS (assistant only) */}
+              {m.role === "assistant" && (
+                <div className="mt-1 flex gap-3 text-xs text-zinc-400">
+                  <button
+                    onClick={() => copyText(m.content)}
+                    className="hover:text-white"
+                    title="Copy"
+                  >
+                    📋
+                  </button>
+
+                  <button
+                    onClick={() => console.log("like", i)}
+                    className="hover:text-green-400"
+                    title="Like"
+                  >
+                    👍
+                  </button>
+
+                  <button
+                    onClick={() => console.log("dislike", i)}
+                    className="hover:text-red-400"
+                    title="Dislike"
+                  >
+                    👎
+                  </button>
+
+                  <button
+                    onClick={() => shareText(m.content)}
+                    className="hover:text-blue-400"
+                    title="Share"
+                  >
+                    🔗
+                  </button>
+                </div>
+              )}
             </div>
           ))}
-
-          {imgUrl && (
-            <img
-              src={imgUrl}
-              alt="generated"
-              className="rounded-xl border border-zinc-700 max-w-full"
-            />
-          )}
 
           {loading && <div className="text-sm text-zinc-400">AI is typing…</div>}
 
@@ -123,23 +149,14 @@ export default function Home() {
         </div>
 
         {/* INPUT */}
-        <footer className="border-t border-zinc-800 p-4 space-y-3">
-          <label className="flex items-center gap-2 text-sm text-zinc-400 select-none">
-            <input
-              type="checkbox"
-              checked={imageMode}
-              onChange={(e) => setImageMode(e.target.checked)}
-            />
-            Image mode
-          </label>
-
+        <footer className="border-t border-zinc-800 p-4">
           <div className="relative">
             <input
               className="w-full bg-zinc-900 border border-zinc-800 rounded-full px-5 py-3 pr-14 text-sm outline-none focus:ring-2 focus:ring-blue-500"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && send()}
-              placeholder={imageMode ? "Describe image…" : "Message Morsalink AI"}
+              placeholder="Message Morsalink AI"
             />
             <button
               onClick={send}
