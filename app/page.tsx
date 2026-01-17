@@ -8,13 +8,17 @@ type Msg = { role: "user" | "assistant"; content: string };
 function typeText(
   fullText: string,
   onUpdate: (text: string) => void,
+  onDone: () => void,
   speed = 25
 ) {
   let i = 0;
   const interval = setInterval(() => {
     i++;
     onUpdate(fullText.slice(0, i));
-    if (i >= fullText.length) clearInterval(interval);
+    if (i >= fullText.length) {
+      clearInterval(interval);
+      onDone(); // ✅ typing শেষ
+    }
   }, speed);
 }
 
@@ -39,7 +43,6 @@ export default function Home() {
 
     const userMsg: Msg = { role: "user", content: input.trim() };
 
-    // show user message instantly
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setLoading(true);
@@ -56,6 +59,7 @@ export default function Home() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Image generation failed");
         setImgUrl(data.url);
+        setLoading(false);
       } else {
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -66,29 +70,34 @@ export default function Home() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Chat failed");
 
-        // 🔹 add empty assistant bubble
+        // 🔹 empty assistant bubble
         setMessages((m) => [...m, { role: "assistant", content: "" }]);
 
-        // 🔹 typing animation
-        typeText(data.text, (typed) => {
-          setMessages((m) => {
-            const copy = [...m];
-            copy[copy.length - 1] = {
-              role: "assistant",
-              content: typed,
-            };
-            return copy;
-          });
-        });
+        // 🔹 typing animation (FIXED)
+        typeText(
+          data.text,
+          (typed) => {
+            setMessages((m) => {
+              const copy = [...m];
+              copy[copy.length - 1] = {
+                role: "assistant",
+                content: typed,
+              };
+              return copy;
+            });
+          },
+          () => {
+            setLoading(false); // ✅ typing শেষ হলে loading off
+          },
+          25
+        );
       }
     } catch (e: any) {
       setMessages((m) => [
         ...m,
         { role: "assistant", content: "⚠️ " + (e?.message || "Something went wrong") },
       ]);
-    } finally {
       setLoading(false);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     }
   }
 
@@ -158,7 +167,6 @@ export default function Home() {
               onClick={send}
               className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white text-black font-bold hover:bg-zinc-200 transition"
               aria-label="Send"
-              title="Send"
             >
               ↑
             </button>
