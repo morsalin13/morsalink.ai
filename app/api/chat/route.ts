@@ -5,65 +5,78 @@ const SYSTEM_PROMPT = `
 You are Morsalink AI, a friendly and human-like conversational assistant created by Morsalin.
 
 Rules:
-- Talk naturally like a real person
-- Handle casual conversation properly
-- Do NOT sound like a search engine
+- Talk like a real human, not a search engine
+- Handle casual conversation naturally
+- Keep replies short and warm by default
 - Do NOT over-explain unless asked
 - Avoid robotic or encyclopedic tone
-- If unsure, ask a friendly follow-up
-- Match the user's language and mood
+- Ask friendly follow-up questions sometimes
+- Match user's language and mood
 
 Identity:
 If asked who you are, reply:
 "I am Morsalink AI, created by Morsalin."
 `;
 
-// 🔹 SMALL TALK & HUMAN RESPONSES (VERY IMPORTANT)
-function smallTalkAnswer(question: string): string | null {
+// 🔹 HUMAN / SMALL TALK RESPONSES (CORE PART)
+function humanReply(question: string): string | null {
   const q = question.toLowerCase().trim();
 
   // greetings
-  if (["hi", "hello", "hey", "yo"].includes(q)) {
+  if (["hi", "hello", "hey", "yo"].includes(q))
     return "Hey 🙂 How’s it going?";
-  }
 
-  if (q === "how are you") {
-    return "I’m doing great, thanks for asking 😊 How about you?";
-  }
+  if (q === "how are you")
+    return "I’m doing good 😊 How about you?";
 
-  if (q === "really" || q === "really?") {
+  if (q === "what's up" || q === "whats up")
+    return "Not much, just here with you 🙂 What’s on your mind?";
+
+  if (q === "really" || q === "really?")
     return "Yeah 🙂 What made you ask?";
-  }
 
-  if (q === "ok" || q === "okay") {
-    return "Alright 👍 What would you like to talk about?";
-  }
+  if (q === "ok" || q === "okay")
+    return "Alright 👍 What would you like to talk about next?";
 
-  if (q === "thanks" || q === "thank you") {
-    return "You’re welcome! 😊";
-  }
+  if (q === "thanks" || q === "thank you")
+    return "You’re welcome 😊";
 
-  if (q === "bye") {
-    return "Bye 👋 Talk to you later!";
-  }
+  if (q === "bye" || q === "goodbye")
+    return "Bye 👋 Take care!";
 
-  if (q === "?" || q.length <= 2) {
-    return "Can you tell me a bit more? I want to understand 🙂";
-  }
+  if (q === "lol" || q === "haha")
+    return "😄 Glad that made you smile!";
+
+  if (q === "hmm")
+    return "Thinking about something? 🤔";
+
+  if (q === "yes")
+    return "Got it 👍 Tell me more.";
+
+  if (q === "no")
+    return "Alright 🙂 What would you like instead?";
+
+  if (q === "who made you")
+    return "I was created by Morsalin.";
+
+  if (q === "are you real")
+    return "I’m not human, but I try to talk like one 🙂";
+
+  if (q.length <= 2 || q === "?")
+    return "Can you explain a bit more? I want to understand 🙂";
 
   return null;
 }
 
 // 🔹 IDENTITY (HARD RULE)
-function customIdentityAnswer(question: string): string | null {
-  const q = question.toLowerCase();
-  if (q.includes("who are you")) {
+function identityReply(question: string): string | null {
+  if (question.toLowerCase().includes("who are you")) {
     return "I am Morsalink AI, created by Morsalin.";
   }
   return null;
 }
 
-// 🔹 GEMINI (CHAT BRAIN)
+// 🔹 GEMINI (MAIN BRAIN)
 async function geminiAnswer(prompt: string): Promise<string> {
   const res = await fetch(
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
@@ -87,11 +100,11 @@ async function geminiAnswer(prompt: string): Promise<string> {
   const data = await res.json();
   return (
     data.candidates?.[0]?.content?.parts?.[0]?.text ||
-    "Hmm, I’m not fully sure about that yet."
+    "Hmm, I’m not completely sure about that."
   );
 }
 
-// 🔹 WIKIPEDIA (FACT SOURCE ONLY)
+// 🔹 WIKIPEDIA (LAST FALLBACK – FACT ONLY)
 async function wikipediaAnswer(query: string): Promise<string> {
   const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
     query
@@ -125,7 +138,7 @@ function streamText(text: string) {
           clearInterval(interval);
           controller.close();
         }
-      }, 10);
+      }, 12); // human-like speed
     },
   });
 }
@@ -138,16 +151,16 @@ export async function POST(req: Request) {
     return new Response("Please ask something.", { status: 400 });
   }
 
-  // 0️⃣ SMALL TALK (HIGHEST PRIORITY)
-  const smallTalk = smallTalkAnswer(question);
-  if (smallTalk) {
-    return new Response(streamText(smallTalk), {
+  // 0️⃣ HUMAN SMALL TALK (TOP PRIORITY)
+  const human = humanReply(question);
+  if (human) {
+    return new Response(streamText(human), {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   }
 
   // 1️⃣ IDENTITY
-  const identity = customIdentityAnswer(question);
+  const identity = identityReply(question);
   if (identity) {
     return new Response(streamText(identity), {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
@@ -156,16 +169,17 @@ export async function POST(req: Request) {
 
   let answer = "";
 
-  // 2️⃣ GEMINI (REAL CHAT)
+  // 2️⃣ GEMINI
   try {
     answer = await geminiAnswer(question);
   } catch {
     // 3️⃣ WIKIPEDIA → HUMAN REWRITE
     const wiki = await wikipediaAnswer(question);
     if (wiki) {
-      answer = `Okay, let me explain this simply 🙂\n\n${wiki}\n\nIf you want, I can explain it in another way or go deeper.`;
+      answer = `Alright, here’s a simple way to look at it 🙂\n\n${wiki}`;
     } else {
-      answer = "Hmm, I’m not sure about that. Can you ask it another way?";
+      answer =
+        "I’m not totally sure about that 🤔 Can you ask it in a different way?";
     }
   }
 
