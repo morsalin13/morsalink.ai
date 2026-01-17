@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Morsalink AI",
-  description: "Gemini powered chat app",
+  description: "AI made by Morsalin",
 };
 
 export default function RootLayout({
