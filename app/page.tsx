@@ -4,6 +4,20 @@ import { useEffect, useRef, useState } from "react";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
+// 🔹 Typing animation helper
+function typeText(
+  fullText: string,
+  onUpdate: (text: string) => void,
+  speed = 25
+) {
+  let i = 0;
+  const interval = setInterval(() => {
+    i++;
+    onUpdate(fullText.slice(0, i));
+    if (i >= fullText.length) clearInterval(interval);
+  }, speed);
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Msg[]>([
     { role: "assistant", content: "Hi! I'm Morsalink AI. How can I help you today?" },
@@ -25,7 +39,7 @@ export default function Home() {
 
     const userMsg: Msg = { role: "user", content: input.trim() };
 
-    // UI instantly shows user msg
+    // show user message instantly
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setLoading(true);
@@ -43,19 +57,29 @@ export default function Home() {
         if (!res.ok) throw new Error(data.error || "Image generation failed");
         setImgUrl(data.url);
       } else {
-        // IMPORTANT: use latest messages (including the new user message)
-        const nextMessages = [...messages, userMsg];
-
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: nextMessages }),
+          body: JSON.stringify({ messages: [...messages, userMsg] }),
         });
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Chat failed");
 
-        setMessages((m) => [...m, { role: "assistant", content: data.text }]);
+        // 🔹 add empty assistant bubble
+        setMessages((m) => [...m, { role: "assistant", content: "" }]);
+
+        // 🔹 typing animation
+        typeText(data.text, (typed) => {
+          setMessages((m) => {
+            const copy = [...m];
+            copy[copy.length - 1] = {
+              role: "assistant",
+              content: typed,
+            };
+            return copy;
+          });
+        });
       }
     } catch (e: any) {
       setMessages((m) => [
@@ -103,7 +127,7 @@ export default function Home() {
             />
           )}
 
-          {loading && <div className="text-sm text-zinc-400">Generating…</div>}
+          {loading && <div className="text-sm text-zinc-400">AI is typing…</div>}
 
           <div ref={bottomRef} />
         </div>
@@ -130,7 +154,6 @@ export default function Home() {
               placeholder={imageMode ? "Describe image…" : "Message Morsalink AI"}
             />
 
-            {/* SEND BUTTON */}
             <button
               onClick={send}
               className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white text-black font-bold hover:bg-zinc-200 transition"
