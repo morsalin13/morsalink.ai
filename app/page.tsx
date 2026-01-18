@@ -2,16 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = {
+  role: "user" | "assistant";
+  content: string;
+};
 
-// copy helper
+// 📋 copy helper
 function copyText(text: string) {
   navigator.clipboard.writeText(text);
 }
 
 export default function Home() {
   const [messages, setMessages] = useState<Msg[]>([
-    { role: "assistant", content: "Hi! I'm Morsalink AI. How can I help you today?" },
+    {
+      role: "assistant",
+      content: "Hi! I'm Morsalink AI. How can I help you today?",
+    },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -27,8 +33,8 @@ export default function Home() {
 
     const userMsg: Msg = { role: "user", content: input.trim() };
 
-    // show user message + empty assistant bubble
-    setMessages((m) => [...m, userMsg, { role: "assistant", content: "" }]);
+    // show user + placeholder assistant
+    setMessages((prev) => [...prev, userMsg, { role: "assistant", content: "" }]);
     setInput("");
     setLoading(true);
 
@@ -36,36 +42,44 @@ export default function Home() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...messages, userMsg] }),
+        body: JSON.stringify({
+          messages: [...messages, userMsg],
+        }),
       });
 
-      const data = await res.json();
+      if (!res.ok) throw new Error("API error");
+
+      const text = await res.text();
 
       // typing animation (UI only)
-      const fullText = data.text || "⚠️ No response";
       let i = 0;
+      const speed = 16;
 
       const interval = setInterval(() => {
         i++;
-        setMessages((m) => {
-          const copy = [...m];
+        setMessages((prev) => {
+          const copy = [...prev];
           copy[copy.length - 1] = {
             role: "assistant",
-            content: fullText.slice(0, i),
+            content: text.slice(0, i),
           };
           return copy;
         });
 
-        if (i >= fullText.length) {
+        if (i >= text.length) {
           clearInterval(interval);
           setLoading(false);
         }
-      }, 18); // typing speed
-    } catch {
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: "⚠️ Something went wrong. Please try again." },
-      ]);
+      }, speed);
+    } catch (err) {
+      setMessages((prev) => {
+        const copy = [...prev];
+        copy[copy.length - 1] = {
+          role: "assistant",
+          content: "⚠️ Something went wrong. Please try again.",
+        };
+        return copy;
+      });
       setLoading(false);
     }
   }
@@ -75,15 +89,18 @@ export default function Home() {
       <div className="mx-auto max-w-3xl flex min-h-screen flex-col">
         {/* HEADER */}
         <header className="border-b border-zinc-800 p-4 text-center">
-          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+          <h1 className="text-xl font-bold tracking-wide bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
             Morsalink AI
           </h1>
         </header>
 
-        {/* CHAT */}
+        {/* CHAT AREA */}
         <div className="flex-1 p-4 space-y-4 overflow-y-auto">
           {messages.map((m, i) => (
-            <div key={i} className={m.role === "user" ? "text-right" : "text-left"}>
+            <div
+              key={i}
+              className={m.role === "user" ? "text-right" : "text-left"}
+            >
               <div
                 className={`inline-block max-w-[80%] px-4 py-2 rounded-2xl text-sm whitespace-pre-wrap
                 ${
@@ -95,11 +112,18 @@ export default function Home() {
                 {m.content}
               </div>
 
+              {/* assistant actions */}
               {m.role === "assistant" && m.content && (
                 <div className="mt-1 flex gap-3 text-xs text-zinc-400">
-                  <button onClick={() => copyText(m.content)}>📋</button>
-                  <button>👍</button>
-                  <button>👎</button>
+                  <button
+                    onClick={() => copyText(m.content)}
+                    className="hover:text-white"
+                    title="Copy"
+                  >
+                    📋
+                  </button>
+                  <button className="hover:text-green-400">👍</button>
+                  <button className="hover:text-red-400">👎</button>
                 </div>
               )}
             </div>
@@ -124,7 +148,7 @@ export default function Home() {
             />
             <button
               onClick={send}
-              className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white text-black font-bold hover:bg-zinc-200"
+              className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white text-black font-bold hover:bg-zinc-200 transition"
             >
               ↑
             </button>
