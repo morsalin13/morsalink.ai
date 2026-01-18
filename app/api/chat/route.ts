@@ -1,49 +1,68 @@
 // app/api/chat/route.ts
-import { NextResponse } from "next/server";
-
-const SYSTEM_PROMPT = `
-You are Morsalink AI, a friendly, human-like assistant created by Morsalin.
-Talk naturally like ChatGPT.
-Keep answers clear and helpful.
-Reply in the user's language.
-`;
-
-async function groqAnswer(messages: any[]) {
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "llama3-70b-8192",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...messages,
-      ],
-      temperature: 0.7,
-    }),
-  });
-
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(t);
-  }
-
-  const data = await res.json();
-  return data.choices[0].message.content;
-}
 
 export async function POST(req: Request) {
   try {
     const { messages } = await req.json();
-    const answer = await groqAnswer(messages);
+    const userMessage = messages[messages.length - 1]?.content;
 
-    return NextResponse.json({ text: answer });
-  } catch (err) {
-    return NextResponse.json(
-      { text: "⚠️ AI is temporarily unavailable. Please try again." },
-      { status: 200 }
-    );
+    if (!userMessage) {
+      return new Response("No message", { status: 400 });
+    }
+
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "llama3-8b-8192",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are Morsalink AI, a friendly, human-like assistant. Talk naturally like ChatGPT.",
+          },
+          { role: "user", content: userMessage },
+        ],
+        temperature: 0.7,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("Groq error:", err);
+      throw new Error("Groq failed");
+    }
+
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || "No response";
+
+    // streaming-style response
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        let i = 0;
+        const interval = setInterval(() => {
+          if (i < text.length) {
+            controller.enqueue(encoder.encode(text[i]));
+            i++;
+          } else {
+            clearInterval(interval);
+            controller.close();
+          }
+        }, 12);
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache",
+      },
+    });
+  } catch (e) {
+    console.error(e);
+    return new Response("AI is temporarily unavailable.", { status: 500 });
   }
 }
