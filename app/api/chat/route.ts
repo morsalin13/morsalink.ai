@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const { messages } = await req.json();
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant", // ✅ FIXED MODEL
+      model: "llama3-70b-8192", // ✅ FIXED MODEL
       messages: messages.map((m: any) => ({
         role: m.role,
         content: m.content,
