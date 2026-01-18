@@ -9,36 +9,39 @@ export async function POST(req: Request) {
       return new Response("No message", { status: 400 });
     }
 
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "llama3-8b-8192",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are Morsalink AI, a friendly, human-like assistant. Talk naturally like ChatGPT.",
-          },
-          { role: "user", content: userMessage },
-        ],
-        temperature: 0.7,
-      }),
-    });
+    const groqRes = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "llama3-8b-8192",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are Morsalink AI. Talk naturally like ChatGPT. Be friendly, short, and human-like.",
+            },
+            { role: "user", content: userMessage },
+          ],
+          temperature: 0.7,
+        }),
+      }
+    );
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Groq error:", err);
+    if (!groqRes.ok) {
+      const err = await groqRes.text();
+      console.error("Groq API error:", err);
       throw new Error("Groq failed");
     }
 
-    const data = await res.json();
+    const data = await groqRes.json();
     const text = data.choices?.[0]?.message?.content || "No response";
 
-    // streaming-style response
+    // 🔥 STREAM (for typing animation)
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
@@ -62,7 +65,10 @@ export async function POST(req: Request) {
       },
     });
   } catch (e) {
-    console.error(e);
-    return new Response("AI is temporarily unavailable.", { status: 500 });
+    console.error("CHAT ROUTE ERROR:", e);
+    return new Response(
+      "Something went wrong. Please try again.",
+      { status: 500 }
+    );
   }
 }
