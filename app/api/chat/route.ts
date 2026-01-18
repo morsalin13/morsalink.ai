@@ -2,11 +2,10 @@
 import { NextResponse } from "next/server";
 
 const SYSTEM_PROMPT = `
-You are Morsalink AI, a friendly, natural, human-like assistant created by Morsalin.
-Talk like ChatGPT.
-Be short, clear, and helpful.
-Never sound like a search engine.
-Match the user's language.
+You are Morsalink AI, a friendly, human-like assistant created by Morsalin.
+Talk naturally like ChatGPT.
+Keep answers clear and helpful.
+Reply in the user's language.
 `;
 
 async function groqAnswer(messages: any[]) {
@@ -17,39 +16,34 @@ async function groqAnswer(messages: any[]) {
       Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "llama3-70b-8192", // ✅ stable & smart
+      model: "llama3-70b-8192",
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         ...messages,
       ],
       temperature: 0.7,
-      stream: true,
     }),
   });
 
-  if (!res.ok || !res.body) {
-    throw new Error("Groq API failed");
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(t);
   }
 
-  return res.body;
+  const data = await res.json();
+  return data.choices[0].message.content;
 }
 
 export async function POST(req: Request) {
   try {
     const { messages } = await req.json();
+    const answer = await groqAnswer(messages);
 
-    const stream = await groqAnswer(messages);
-
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-cache",
-      },
-    });
+    return NextResponse.json({ text: answer });
   } catch (err) {
     return NextResponse.json(
-      { error: "Groq error" },
-      { status: 500 }
+      { text: "⚠️ AI is temporarily unavailable. Please try again." },
+      { status: 200 }
     );
   }
 }
